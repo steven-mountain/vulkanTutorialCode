@@ -158,7 +158,6 @@ private:
 
 	VkRenderPass renderPass;
 
-
 	VkCommandPool commandPool;
 	std::vector<VkCommandBuffer> commandBuffers;
 	std::vector<VkSemaphore> imageAvailableSemaphores;
@@ -210,10 +209,15 @@ private:
 	std::vector<UboDataDynamic> ubodataDynamics;
 	std::vector<glm::vec3> perObjectXY;
 	size_t dynamicAlignment;
-	VkDescriptorSetLayout dynamicUniformBufferDescriptorSetLayout;
-	VkDescriptorPool dynamicUniformBufferDescriptorPool;
-	std::vector<VkDescriptorSet> dynamicUniformBufferDescriptorsets;
-	VkPipelineLayout dynamicUniformBufferPipelineLayout;
+	// multi sets start
+	std::vector<VkDescriptorSetLayout> multiSetDescriptorSetLayouts;
+	VkDescriptorPool multiSetDescriptorPools;
+	std::vector<VkDescriptorSet> multiDescriptorSet1;
+	std::vector<VkDescriptorSet> multiDescriptorSet2;
+	VkPipelineLayout multiSetPipelineLayout;
+
+	// multi sets end
+
 	VkPipeline dynamicUniformBufferPipeline;
 
 	VkSemaphore imageAvailableSemaphore;
@@ -236,25 +240,15 @@ private:
 		createSwapChain();
 		createImageView();
 		createRenderPass();
-		//createDescriptorsetLayout(); // descriptor layout
-		//createGraphicsPipeline();  // 需要descriptor layout
-		//createCircleDescriptorSetLayout();
-		createDynamicUniformBufferDescriptorSetLayout(); // descriptor layout
-		createDynamicUniformBufferGraphicsPipeline(); // 需要descriptor layout
+		createDynamicUniformBufferDescriptorSetLayouts();
+		createDynamicUniformBufferGraphicsPipeline(); 
 		createFramebuffer();
-		//createDescriptorPool(); // pool 不需要layout
-		createDynamicUniformBufferDescriptorPool(); // pool 不需要layout
+		createDynamicUniformBufferDescriptorPools();
 		createCommandPool();
-		//createVertexBuffer();
-		//createIndexBuffer();
-		createCircleBuffer(); // circles' vertex buffer
-		//createCircleUniformBuffers(); 
-		createDynamicAndStaticUniformBuffers(); // buffer 也不需要layoutf
-		//createUniformBuffers(); // buffer 也不需要layoutf
-		createDynamicUniformBufferDescriptorsets(); // 创建sets 需要buffer 需要layout 需要pool
+		createCircleBuffer(); 
+		createDynamicAndStaticUniformBuffers(); 
+		createDynamicUniformBufferDescriptorsets(); 
 		createCommandBuffers();
-		//createCircleDescriptorSets();
-		//createDescriptorsets(); // 创建sets 需要buffer 需要layout 需要pool
 		createSyncObjects();
 	}
 
@@ -314,97 +308,121 @@ private:
 		updateDynamicUniformBuffersData(VK_TRUE);
 	}
 
-	void createDynamicUniformBufferDescriptorSetLayout() {
-		VkDescriptorSetLayoutBinding uboStaticLayoutBinding{};
-		uboStaticLayoutBinding.binding = 0;
-		uboStaticLayoutBinding.descriptorCount = 1;
-		uboStaticLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-		uboStaticLayoutBinding.pImmutableSamplers = nullptr;
-		uboStaticLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+	void createDynamicUniformBufferDescriptorSetLayouts() {
+		// 将dynamic 和 static 放在两个不同的set里
+		multiSetDescriptorSetLayouts.resize(2);
 
-		VkDescriptorSetLayoutBinding uboDynamicLayoutBinding{};
-		uboDynamicLayoutBinding.binding = 1;
-		uboDynamicLayoutBinding.descriptorCount = 1;
-		uboDynamicLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
-		uboDynamicLayoutBinding.pImmutableSamplers = nullptr;
-		uboDynamicLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+		VkDescriptorSetLayoutBinding multiSetLayoutBinding1{};
+		multiSetLayoutBinding1.binding = 0;
+		multiSetLayoutBinding1.descriptorCount = 1;
+		multiSetLayoutBinding1.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+		multiSetLayoutBinding1.pImmutableSamplers = nullptr;
+		multiSetLayoutBinding1.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
 
-		VkDescriptorSetLayoutBinding layoutBingding[] = { uboStaticLayoutBinding , uboDynamicLayoutBinding };
+		std::vector< VkDescriptorSetLayoutBinding> layoutBingding1 = { multiSetLayoutBinding1 };
+		VkDescriptorSetLayoutCreateInfo multiSetDescriptorSetLaytouCreateInfo1{};
+		multiSetDescriptorSetLaytouCreateInfo1.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+		multiSetDescriptorSetLaytouCreateInfo1.bindingCount = 1;
+		multiSetDescriptorSetLaytouCreateInfo1.pBindings = layoutBingding1.data();
+		if (vkCreateDescriptorSetLayout(device, &multiSetDescriptorSetLaytouCreateInfo1, nullptr, &multiSetDescriptorSetLayouts[0]) != VK_SUCCESS) {
+			throw std::runtime_error("failed to create dynamic uniform buffer descriptorsetlayouts");
+		}
 
-		VkDescriptorSetLayoutCreateInfo dynamicUniformBufferDescriptorSetLayoutCreateInfo{};
-		dynamicUniformBufferDescriptorSetLayoutCreateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-		dynamicUniformBufferDescriptorSetLayoutCreateInfo.bindingCount = 2;
-		dynamicUniformBufferDescriptorSetLayoutCreateInfo.pBindings = layoutBingding;
-		if (vkCreateDescriptorSetLayout(device, &dynamicUniformBufferDescriptorSetLayoutCreateInfo, nullptr, &dynamicUniformBufferDescriptorSetLayout) != VK_SUCCESS) {
+		VkDescriptorSetLayoutBinding multiSetLayoutBinding2{};
+		multiSetLayoutBinding2.binding = 0;
+		multiSetLayoutBinding2.descriptorCount = 1;
+		multiSetLayoutBinding2.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+		multiSetLayoutBinding2.pImmutableSamplers = nullptr;
+		multiSetLayoutBinding2.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+
+		std::vector< VkDescriptorSetLayoutBinding> layoutBingding2 = { multiSetLayoutBinding2 };
+		VkDescriptorSetLayoutCreateInfo multiSetDescriptorSetLaytouCreateInfo2{};
+		multiSetDescriptorSetLaytouCreateInfo2.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+		multiSetDescriptorSetLaytouCreateInfo2.bindingCount = 1;
+		multiSetDescriptorSetLaytouCreateInfo2.pBindings = layoutBingding2.data();
+		if (vkCreateDescriptorSetLayout(device, &multiSetDescriptorSetLaytouCreateInfo2, nullptr, &multiSetDescriptorSetLayouts[1]) != VK_SUCCESS) {
 			throw std::runtime_error("failed to create dynamic uniform buffer descriptorsetlayouts");
 		}
 	}
 
-	void createDynamicUniformBufferDescriptorPool() {
-		VkDescriptorPoolSize staticPoolSize{};
-		staticPoolSize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-		staticPoolSize.descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
-		VkDescriptorPoolSize dynamicPoolSize{};
-		dynamicPoolSize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
-		dynamicPoolSize.descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
+	void createDynamicUniformBufferDescriptorPools() {
+		VkDescriptorPoolSize poolSize1{};
+		poolSize1.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+		poolSize1.descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
+		VkDescriptorPoolSize poolSize2{};
+		poolSize2.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+		poolSize2.descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
 
-		std::vector<VkDescriptorPoolSize> poolSizes = { staticPoolSize , dynamicPoolSize };
+		std::vector<VkDescriptorPoolSize> poolSizes = { poolSize1 , poolSize2 };
 
 		VkDescriptorPoolCreateInfo descriptorPoolCreateInfo{};
 		descriptorPoolCreateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
 		descriptorPoolCreateInfo.poolSizeCount = poolSizes.size();
 		descriptorPoolCreateInfo.pPoolSizes = poolSizes.data();
 		descriptorPoolCreateInfo.maxSets = 2 * static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT); // 这是池子里最大的数？
-		if (vkCreateDescriptorPool(device, &descriptorPoolCreateInfo, nullptr, &dynamicUniformBufferDescriptorPool) != VK_SUCCESS) {
+		if (vkCreateDescriptorPool(device, &descriptorPoolCreateInfo, nullptr, &multiSetDescriptorPools) != VK_SUCCESS) {
 			throw std::runtime_error("failed to create descriptorpool");
 		}
 	}
 
 	void createDynamicUniformBufferDescriptorsets() {
-		std::vector<VkDescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT, dynamicUniformBufferDescriptorSetLayout);
-		VkDescriptorSetAllocateInfo setAllocateInfo{};
-		setAllocateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-		setAllocateInfo.descriptorPool = dynamicUniformBufferDescriptorPool;
-		setAllocateInfo.descriptorSetCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
-		setAllocateInfo.pSetLayouts = layouts.data();
-		dynamicUniformBufferDescriptorsets.resize(MAX_FRAMES_IN_FLIGHT);
-		if (vkAllocateDescriptorSets(device, &setAllocateInfo, dynamicUniformBufferDescriptorsets.data()) != VK_SUCCESS) {
+		// 创建 descriptorSet1
+		std::vector<VkDescriptorSetLayout> layouts1(MAX_FRAMES_IN_FLIGHT, multiSetDescriptorSetLayouts[0]);
+		VkDescriptorSetAllocateInfo setAllocateInfo1{};
+		setAllocateInfo1.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+		setAllocateInfo1.descriptorPool = multiSetDescriptorPools;
+		setAllocateInfo1.descriptorSetCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
+		setAllocateInfo1.pSetLayouts = layouts1.data();
+		multiDescriptorSet1.resize(MAX_FRAMES_IN_FLIGHT);
+		if (vkAllocateDescriptorSets(device, &setAllocateInfo1, multiDescriptorSet1.data()) != VK_SUCCESS) {
+			throw std::runtime_error("failed to create dynamic uniform buffer descriptor sets");
+		}
+
+		// 创建 descriptorSet2
+		std::vector<VkDescriptorSetLayout> layouts2(MAX_FRAMES_IN_FLIGHT, multiSetDescriptorSetLayouts[1]);
+		VkDescriptorSetAllocateInfo setAllocateInfo2{};
+		setAllocateInfo2.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+		setAllocateInfo2.descriptorPool = multiSetDescriptorPools;
+		setAllocateInfo2.descriptorSetCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
+		setAllocateInfo2.pSetLayouts = layouts1.data();
+		multiDescriptorSet2.resize(MAX_FRAMES_IN_FLIGHT);
+		if (vkAllocateDescriptorSets(device, &setAllocateInfo1, multiDescriptorSet2.data()) != VK_SUCCESS) {
 			throw std::runtime_error("failed to create dynamic uniform buffer descriptor sets");
 		}
 
 		for (uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
-			VkDescriptorBufferInfo bufferInfo = {};
-			bufferInfo.buffer = dynamicUniformbufffers[i].view;
-			bufferInfo.offset = 0;
-			bufferInfo.range = sizeof(uboVS);
+			VkDescriptorBufferInfo bufferInfo1 = {};
+			bufferInfo1.buffer = dynamicUniformbufffers[i].view;
+			bufferInfo1.offset = 0;
+			bufferInfo1.range = sizeof(uboVS);
 
-			VkDescriptorBufferInfo dynamicBufferInfo = {};
-			dynamicBufferInfo.buffer = dynamicUniformbufffers[i].dynamic;
-			dynamicBufferInfo.offset = 0;
-			dynamicBufferInfo.range = dynamicAlignment;
+			VkDescriptorBufferInfo bufferInfo2 = {};
+			bufferInfo2.buffer = dynamicUniformbufffers[i].dynamic;
+			bufferInfo2.offset = 0;
+			bufferInfo2.range = dynamicAlignment;
 
-			VkWriteDescriptorSet staticWriteDescriptor{};
-			staticWriteDescriptor.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-			staticWriteDescriptor.dstSet = dynamicUniformBufferDescriptorsets[i];
-			staticWriteDescriptor.dstBinding = 0;
-			staticWriteDescriptor.dstArrayElement = 0;
-			staticWriteDescriptor.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-			staticWriteDescriptor.descriptorCount = 1;
-			staticWriteDescriptor.pBufferInfo = &bufferInfo;
-			staticWriteDescriptor.pImageInfo = nullptr;
-			staticWriteDescriptor.pTexelBufferView = nullptr;
+			VkWriteDescriptorSet writeDescriptor1{};
+			writeDescriptor1.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+			writeDescriptor1.dstSet = multiDescriptorSet1[i];
+			writeDescriptor1.dstBinding = 0;
+			writeDescriptor1.dstArrayElement = 0;
+			writeDescriptor1.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+			writeDescriptor1.descriptorCount = 1;
+			writeDescriptor1.pBufferInfo = &bufferInfo1;
+			writeDescriptor1.pImageInfo = nullptr;
+			writeDescriptor1.pTexelBufferView = nullptr;
 
-			VkWriteDescriptorSet dynamicWriteDescriptor{};
-			dynamicWriteDescriptor.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-			dynamicWriteDescriptor.dstSet = dynamicUniformBufferDescriptorsets[i];
-			dynamicWriteDescriptor.dstBinding = 1;
-			dynamicWriteDescriptor.dstArrayElement = 0;
-			dynamicWriteDescriptor.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
-			dynamicWriteDescriptor.descriptorCount = 1;
-			dynamicWriteDescriptor.pBufferInfo = &dynamicBufferInfo;
-			dynamicWriteDescriptor.pTexelBufferView = nullptr;
-			std::vector<VkWriteDescriptorSet> writeDescriptorsets = { staticWriteDescriptor , dynamicWriteDescriptor };
-			vkUpdateDescriptorSets(device, 2, writeDescriptorsets.data(), 0, nullptr); // 填充buffer内容 我是傻逼 这儿肯定是2啊
+			VkWriteDescriptorSet writeDescriptor2{};
+			writeDescriptor2.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+			writeDescriptor2.dstSet = multiDescriptorSet2[i];
+			writeDescriptor2.dstBinding = 0;
+			writeDescriptor2.dstArrayElement = 0;
+			writeDescriptor2.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+			writeDescriptor2.descriptorCount = 1;
+			writeDescriptor2.pBufferInfo = &bufferInfo2;
+			writeDescriptor2.pTexelBufferView = nullptr;
+			std::vector<VkWriteDescriptorSet> writeDescriptorsets = { writeDescriptor1 , writeDescriptor2 };
+			vkUpdateDescriptorSets(device, 2, writeDescriptorsets.data(), 0, nullptr); 
 		}
 	}
 
@@ -522,11 +540,11 @@ private:
 
 		VkPipelineLayoutCreateInfo layoutCreateInfo{};
 		layoutCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-		layoutCreateInfo.setLayoutCount = 1; 
-		layoutCreateInfo.pSetLayouts = &dynamicUniformBufferDescriptorSetLayout;
+		layoutCreateInfo.setLayoutCount = 2; 
+		layoutCreateInfo.pSetLayouts = multiSetDescriptorSetLayouts.data();
 		layoutCreateInfo.pushConstantRangeCount = 0;
 		layoutCreateInfo.pPushConstantRanges = nullptr;
-		if (vkCreatePipelineLayout(device, &layoutCreateInfo, nullptr, &dynamicUniformBufferPipelineLayout) != VK_SUCCESS) {
+		if (vkCreatePipelineLayout(device, &layoutCreateInfo, nullptr, &multiSetPipelineLayout) != VK_SUCCESS) {
 			throw std::runtime_error("failed to create dynamic uniform buffer layout");
 		}
 
@@ -543,7 +561,7 @@ private:
 		graphicsPipelineCreateInfo.pMultisampleState = &multisampling;
 		graphicsPipelineCreateInfo.pDepthStencilState = nullptr;
 		graphicsPipelineCreateInfo.pColorBlendState = &colorBlend;
-		graphicsPipelineCreateInfo.layout = dynamicUniformBufferPipelineLayout;
+		graphicsPipelineCreateInfo.layout = multiSetPipelineLayout;
 
 		graphicsPipelineCreateInfo.renderPass = renderPass;
 		graphicsPipelineCreateInfo.subpass = 0;
@@ -771,7 +789,8 @@ private:
 		vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
 		for (uint32_t j = 0; j < OBJECT_INSTANCES; ++j) {
 			uint32_t dynamicOffset = j * static_cast<uint32_t>(dynamicAlignment);
-			vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, dynamicUniformBufferPipelineLayout, 0, 1, &dynamicUniformBufferDescriptorsets[currentFrame], 1, &dynamicOffset);
+			std::vector<VkDescriptorSet> descriptorSets = { multiDescriptorSet1[currentFrame], multiDescriptorSet2[currentFrame] };
+			vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, multiSetPipelineLayout, 0, 2, descriptorSets.data(), 1, &dynamicOffset);
 			vkCmdDraw(commandBuffer, static_cast<uint32_t>(circlePointSet.size()), 1, 0, 0);
 		}
 		//vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
@@ -1298,8 +1317,12 @@ private:
 			vkFreeMemory(device, dynamicUniformMemorys[i].dyamiceMemory, nullptr);
 			alignedFree(ubodataDynamics[i].model);
 		}
-		vkDestroyDescriptorSetLayout(device, dynamicUniformBufferDescriptorSetLayout, nullptr);
-		vkDestroyDescriptorPool(device, dynamicUniformBufferDescriptorPool, nullptr);
+
+		for (uint32_t i = 0; i < multiSetDescriptorSetLayouts.size(); ++i) {
+			vkDestroyDescriptorSetLayout(device, multiSetDescriptorSetLayouts[i], nullptr);
+		}
+		
+		vkDestroyDescriptorPool(device, multiSetDescriptorPools, nullptr);
 
 		vkDestroyBuffer(device, circleBuffer, nullptr);
 		vkFreeMemory(device, circleMemory, nullptr);
@@ -1307,7 +1330,7 @@ private:
 		vkDestroyCommandPool(device, commandPool, nullptr);
 
 		vkDestroyPipeline(device, dynamicUniformBufferPipeline, nullptr);
-		vkDestroyPipelineLayout(device, dynamicUniformBufferPipelineLayout, nullptr);
+		vkDestroyPipelineLayout(device, multiSetPipelineLayout, nullptr);
 		vkDestroyRenderPass(device, renderPass, nullptr);
 
 		for (auto framBuffer : swapchainFramebuffer) {
