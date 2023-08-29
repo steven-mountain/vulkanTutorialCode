@@ -65,51 +65,6 @@ void generateCircle(float radius, int pointnum, std::vector<glm::vec2>& pointSet
 }
 
 std::vector<glm::vec2> circlePointSet;
-// circle def end
-
-struct Vertex {
-	glm::vec2 pos;
-	glm::vec3 color;
-	static VkVertexInputBindingDescription getBingdingDescrition() {
-		VkVertexInputBindingDescription bingdingDescription{};
-		bingdingDescription.binding = 0;
-		bingdingDescription.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
-		bingdingDescription.stride = sizeof(Vertex);
-		return bingdingDescription;
-	}
-	static std::array< VkVertexInputAttributeDescription, 2> getAttributeDescriptions() {
-		std::array< VkVertexInputAttributeDescription, 2> attributeDescriptions{};
-		attributeDescriptions[0].binding = 0;
-		attributeDescriptions[0].format = VK_FORMAT_R32G32_SFLOAT;
-		attributeDescriptions[0].location = 0; // 和 shader 中的location相对应
-		attributeDescriptions[0].offset = offsetof(Vertex, pos); // 这个是在stddef.h头文件中
-
-		attributeDescriptions[1].binding = 0;
-		attributeDescriptions[1].format = VK_FORMAT_R32G32B32_SFLOAT;
-		attributeDescriptions[1].location = 1;
-		attributeDescriptions[1].offset = offsetof(Vertex, color);
-		return attributeDescriptions;
-	}
-};
-
-
-const std::vector<Vertex> vertices = {
-	{{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}},
-	{{0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}},
-	{{0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}},
-	{{-0.5f, 0.5f}, {1.0f, 1.0f, 1.0f}}
-};
-
-const std::vector<Vertex> vertices1 = {
-	{{0.0f, -0.5f}, {1.0f, 0.0f, 0.0f}},
-	{{0.5f, 0.5f}, {0.0f, 1.0f, 0.0f}},
-	{{-0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}}
-};
-
-const std::vector<uint16_t> indices = {
-	0, 1, 2, 2, 3, 0
-};
-
 // @brief: for every object to create a unique model matrix
 // @param: radius 环形分布半径， perObjectXY 存储产生的坐标，isUpdate 是否更新
 // @ret: void
@@ -199,19 +154,10 @@ private:
 	VkFormat swapChainImageFormat;
 	VkExtent2D swapChainExtent;
 	std::vector<VkImageView> swapChainImageView;
-
-	VkDescriptorSetLayout descriptorsetlayout;
-	std::vector<VkBuffer> uniformBuffers;
-	std::vector<VkDeviceMemory> uniformMemory;
-	std::vector<void*> uniformBuffersMapped;
-	VkDescriptorPool descriptorPool;
-	std::vector<VkDescriptorSet> descriptorSets;
+	std::vector<VkFramebuffer> swapchainFramebuffer;
 
 	VkRenderPass renderPass;
-	VkPipelineLayout pipelineLayout; //用来存放uniform的 用于资源绑定的
-	VkPipeline pipeline;
 
-	std::vector<VkFramebuffer> swapchainFramebuffer;
 
 	VkCommandPool commandPool;
 	std::vector<VkCommandBuffer> commandBuffers;
@@ -222,18 +168,9 @@ private:
 	VkCommandBuffer commandBuffer;
 	VkBuffer vertexBuffer;
 	VkDeviceMemory vertexMemory;
-	VkBuffer indexBuffer;
-	VkDeviceMemory indexMemory;
 	// circle
 	VkBuffer circleBuffer;
 	VkDeviceMemory circleMemory;
-	VkPipelineLayout circlePipelineLayout;
-	VkPipeline circlePipeline;
-	VkDescriptorSetLayout circleDescriptorSetLayout;
-	std::vector<VkBuffer> uniformBuffersCircle;
-	std::vector<VkDeviceMemory> uniformMemoryCircle;
-	std::vector<void*> uniformBuffersMappedCircle;
-	std::vector<VkDescriptorSet> circleDescriptorSets;
 	
 	struct UniformBufferObject {
 		glm::mat4 model;
@@ -319,60 +256,6 @@ private:
 		//createCircleDescriptorSets();
 		//createDescriptorsets(); // 创建sets 需要buffer 需要layout 需要pool
 		createSyncObjects();
-	}
-
-	void translateCircle(glm::vec3 location, uint32_t currrentFrame) {
-		UniformBufferObject ubo;
-		ubo.model = glm::translate(glm::mat4(1.0f), location);
-		ubo.view = glm::lookAt(glm::vec3(0.0f, 0.0f, 3.0f), glm::vec3(0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
-		ubo.proj = glm::perspective(glm::radians(45.0f), swapChainExtent.width / (float)swapChainExtent.height, 0.1f, 100.0f);
-		ubo.proj[1][1] *= -1;
-		//ubo.view = glm::mat4(1.0f);
-		//ubo.proj = glm::mat4(1.0f);
-		memcpy(uniformBuffersMappedCircle[currentFrame], &ubo, sizeof(ubo));
-	}
-
-	void createCircleDescriptorSets() {
-		std::vector<VkDescriptorSetLayout> circleLayouts(MAX_FRAMES_IN_FLIGHT, circleDescriptorSetLayout);
-		VkDescriptorSetAllocateInfo circleSetAllocateInfo{};
-		circleSetAllocateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-		circleSetAllocateInfo.pSetLayouts = circleLayouts.data();
-		circleSetAllocateInfo.descriptorPool = descriptorPool;
-		circleSetAllocateInfo.descriptorSetCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
-		circleDescriptorSets.resize(MAX_FRAMES_IN_FLIGHT);
-		if (vkAllocateDescriptorSets(device, &circleSetAllocateInfo, circleDescriptorSets.data()) != VK_SUCCESS) {
-			throw std::runtime_error("failed to create circle descriptor sets");
-		}
-		for (uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
-			VkDescriptorBufferInfo circleBufferInfo{};
-			circleBufferInfo.buffer = uniformBuffersCircle[i];
-			circleBufferInfo.offset = 0;
-			circleBufferInfo.range = sizeof(UniformBufferObject);
-
-			VkWriteDescriptorSet circleWriteDescriptorSet{};
-			circleWriteDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-			circleWriteDescriptorSet.descriptorCount = 1;
-			circleWriteDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-			circleWriteDescriptorSet.dstArrayElement = 0;
-			circleWriteDescriptorSet.dstBinding = 0;
-			circleWriteDescriptorSet.dstSet = circleDescriptorSets[i];
-			circleWriteDescriptorSet.pBufferInfo = &circleBufferInfo;
-			circleWriteDescriptorSet.pImageInfo = nullptr;
-			circleWriteDescriptorSet.pNext = nullptr;
-			circleWriteDescriptorSet.pTexelBufferView = nullptr;
-			vkUpdateDescriptorSets(device, 1, &circleWriteDescriptorSet, 0, nullptr);
-		}
-	}
-
-	void createCircleUniformBuffers() {
-		uniformBuffersCircle.resize(MAX_FRAMES_IN_FLIGHT);
-		uniformBuffersMappedCircle.resize(MAX_FRAMES_IN_FLIGHT);
-		uniformMemoryCircle.resize(MAX_FRAMES_IN_FLIGHT);
-		VkDeviceSize bufferSize = sizeof(UniformBufferObject);
-		for (uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
-			createBuffer(uniformBuffersCircle[i], uniformMemoryCircle[i], bufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-			vkMapMemory(device, uniformMemoryCircle[i], 0, bufferSize, 0, &uniformBuffersMappedCircle[i]);
-		}
 	}
 
 	// dynamic uniform buffer
@@ -677,200 +560,6 @@ private:
 
 	// dynamic uniform buffer
 
-	void createCircleDescriptorSetLayout() {
-		VkDescriptorSetLayoutBinding circleDescriptorSetLayoutBinding{};
-		circleDescriptorSetLayoutBinding.binding = 0;
-		circleDescriptorSetLayoutBinding.descriptorCount = 1;
-		circleDescriptorSetLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-		circleDescriptorSetLayoutBinding.pImmutableSamplers = nullptr;
-		circleDescriptorSetLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
-
-		VkDescriptorSetLayoutBinding uboDynamicLayoutBinding{};
-		uboDynamicLayoutBinding.binding = 1;
-		uboDynamicLayoutBinding.descriptorCount = 1;
-		uboDynamicLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
-		uboDynamicLayoutBinding.pImmutableSamplers = nullptr;
-		uboDynamicLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
-
-		VkDescriptorSetLayoutBinding layoutBingding[] = {circleDescriptorSetLayoutBinding , uboDynamicLayoutBinding};
-
-		VkDescriptorSetLayoutCreateInfo circleDescriptorSetLayoutCreateInfo{};
-		circleDescriptorSetLayoutCreateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-		circleDescriptorSetLayoutCreateInfo.bindingCount = 2;
-		circleDescriptorSetLayoutCreateInfo.pBindings = layoutBingding;
-		if (vkCreateDescriptorSetLayout(device, &circleDescriptorSetLayoutCreateInfo, nullptr, &circleDescriptorSetLayout) != VK_SUCCESS) {
-			throw std::runtime_error("failed to create circle descriptorsetlayouts");
-		}
-	}
-
-	void createDescriptorPool() {
-		std::vector<VkDescriptorPoolSize> poolSizes{};
-		poolSizes.resize(2);
-		poolSizes[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-		poolSizes[0].descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
-		poolSizes[1].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
-		poolSizes[1].descriptorCount = static_cast<uint32_t>(swapChainImages.size());
-
-		VkDescriptorPoolCreateInfo descriptorPoolCreateInfo{};
-		descriptorPoolCreateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-		descriptorPoolCreateInfo.poolSizeCount = 2;
-		descriptorPoolCreateInfo.pPoolSizes = poolSizes.data();
-		descriptorPoolCreateInfo.maxSets = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT); // 这是池子里最大的数？
-		if (vkCreateDescriptorPool(device, &descriptorPoolCreateInfo, nullptr, &descriptorPool) != VK_SUCCESS) {
-			throw std::runtime_error("failed to create descriptorpool");
-		}
-	}
-
-	void createCirclePipeline() {
-		// fix stage
-		auto vertShaderCode = readFile("circlevert.spv");
-		auto fragShaderCode = readFile("circlefrag.spv");
-
-		VkShaderModule vertShaderModule = createShaderModule(vertShaderCode);
-		VkShaderModule fragShaderModule = createShaderModule(fragShaderCode);
-
-		VkPipelineShaderStageCreateInfo vertShaderStageInfo{};
-		vertShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-		vertShaderStageInfo.stage = VK_SHADER_STAGE_VERTEX_BIT;
-		vertShaderStageInfo.module = vertShaderModule;
-		vertShaderStageInfo.pName = "main";
-
-		VkPipelineShaderStageCreateInfo fragShaderStageInfo{};
-		fragShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-		fragShaderStageInfo.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
-		fragShaderStageInfo.module = fragShaderModule;
-		fragShaderStageInfo.pName = "main";
-
-		VkPipelineShaderStageCreateInfo shaderStages[] = {vertShaderStageInfo, fragShaderStageInfo};
-
-		// fix function
-		std::vector<VkDynamicState> dynamicStates = {
-			VK_DYNAMIC_STATE_VIEWPORT,
-			VK_DYNAMIC_STATE_SCISSOR
-		};
-		VkPipelineDynamicStateCreateInfo dynamicSateCreateInfo{};
-		dynamicSateCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
-		dynamicSateCreateInfo.dynamicStateCount = static_cast<uint32_t>(dynamicStates.size());
-		dynamicSateCreateInfo.pDynamicStates = dynamicStates.data();
-
-		VkPipelineVertexInputStateCreateInfo vertexInputCreateInfo{};
-		vertexInputCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-		auto bingDingDescription = CirclePoint::getBindingDescription();
-		auto attributeDescription = CirclePoint::getAttributeDescriptions();
-
-		vertexInputCreateInfo.vertexBindingDescriptionCount = 1;
-		vertexInputCreateInfo.pVertexBindingDescriptions = &bingDingDescription;
-		vertexInputCreateInfo.vertexAttributeDescriptionCount = static_cast<uint32_t>(attributeDescription.size());
-		vertexInputCreateInfo.pVertexAttributeDescriptions = attributeDescription.data();
-
-		VkPipelineInputAssemblyStateCreateInfo inputAssembly{};
-		inputAssembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
-		inputAssembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_FAN;
-		inputAssembly.primitiveRestartEnable = VK_FALSE;
-
-		VkViewport viewPort{};
-		viewPort.x = 0.0f;
-		viewPort.y = 0.0f;
-		viewPort.width = (float)swapChainExtent.width;
-		viewPort.height = (float)swapChainExtent.height;
-		viewPort.minDepth = 0.0f;
-		viewPort.maxDepth = 1.0f;
-		
-		VkRect2D scissor{};
-		scissor.extent = swapChainExtent;
-		scissor.offset = {0, 0};
-
-		VkPipelineViewportStateCreateInfo viewPortState{};
-		viewPortState.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
-		viewPortState.viewportCount = 1;
-		viewPortState.scissorCount = 1;
-
-		VkPipelineRasterizationStateCreateInfo rasterizer{};
-		rasterizer.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
-		rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
-		rasterizer.depthClampEnable = VK_FALSE;
-		rasterizer.rasterizerDiscardEnable = VK_FALSE;
-		rasterizer.lineWidth = 1.0f;
-
-		rasterizer.cullMode = VK_CULL_MODE_NONE;
-		rasterizer.frontFace = VK_FRONT_FACE_CLOCKWISE;
-
-		rasterizer.depthBiasEnable = VK_FALSE;
-		rasterizer.depthBiasClamp = 0.0f;
-		rasterizer.depthBiasConstantFactor = 0.0f;
-		rasterizer.depthBiasSlopeFactor = 0.0f;
-
-		VkPipelineMultisampleStateCreateInfo multisampling{};
-		multisampling.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
-		multisampling.sampleShadingEnable = VK_FALSE;
-		multisampling.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
-		multisampling.minSampleShading = 1.0f;
-		multisampling.pSampleMask = nullptr;
-		multisampling.alphaToCoverageEnable = VK_FALSE;
-		multisampling.alphaToOneEnable = VK_FALSE;
-
-		VkPipelineColorBlendAttachmentState colorBlendAttachment{};
-		colorBlendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT |
-			VK_COLOR_COMPONENT_G_BIT |
-			VK_COLOR_COMPONENT_B_BIT |
-			VK_COLOR_COMPONENT_A_BIT;
-		colorBlendAttachment.blendEnable = VK_FALSE;
-		colorBlendAttachment.colorBlendOp = VK_BLEND_OP_ADD;
-		colorBlendAttachment.alphaBlendOp = VK_BLEND_OP_ADD;
-		colorBlendAttachment.srcColorBlendFactor = VK_BLEND_FACTOR_ONE;
-		colorBlendAttachment.dstColorBlendFactor = VK_BLEND_FACTOR_ZERO;
-		colorBlendAttachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
-		colorBlendAttachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
-
-		VkPipelineColorBlendStateCreateInfo colorBlend{};
-		colorBlend.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
-		colorBlend.logicOpEnable = VK_FALSE;
-		colorBlend.logicOp = VK_LOGIC_OP_COPY;
-		colorBlend.attachmentCount = 1;
-		colorBlend.pAttachments = &colorBlendAttachment;
-		colorBlend.blendConstants[0] = 0.0f; // rgba
-		colorBlend.blendConstants[1] = 0.0f;
-		colorBlend.blendConstants[2] = 0.0f;
-		colorBlend.blendConstants[3] = 0.0f;
-
-		VkPipelineLayoutCreateInfo layoutCreateInfo{};
-		layoutCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-		layoutCreateInfo.setLayoutCount = 1;
-		layoutCreateInfo.pSetLayouts = &circleDescriptorSetLayout;
-		layoutCreateInfo.pushConstantRangeCount = 0;
-		layoutCreateInfo.pPushConstantRanges = nullptr;
-		if (vkCreatePipelineLayout(device, &layoutCreateInfo, nullptr, &circlePipelineLayout) != VK_SUCCESS) {
-			throw std::runtime_error("failed to create layout");
-		}
-
-		VkGraphicsPipelineCreateInfo graphicsPipelineCreateInfo{};
-		graphicsPipelineCreateInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
-		graphicsPipelineCreateInfo.stageCount = 2;
-		graphicsPipelineCreateInfo.pStages = shaderStages;
-
-		graphicsPipelineCreateInfo.pDynamicState = &dynamicSateCreateInfo;
-		graphicsPipelineCreateInfo.pVertexInputState = &vertexInputCreateInfo;
-		graphicsPipelineCreateInfo.pInputAssemblyState = &inputAssembly;
-		graphicsPipelineCreateInfo.pViewportState = &viewPortState;
-		graphicsPipelineCreateInfo.pRasterizationState = &rasterizer;
-		graphicsPipelineCreateInfo.pMultisampleState = &multisampling;
-		graphicsPipelineCreateInfo.pDepthStencilState = nullptr;
-		graphicsPipelineCreateInfo.pColorBlendState = &colorBlend;
-		graphicsPipelineCreateInfo.layout = circlePipelineLayout;
-
-		graphicsPipelineCreateInfo.renderPass = renderPass;
-		graphicsPipelineCreateInfo.subpass = 0;
-
-		graphicsPipelineCreateInfo.basePipelineHandle = VK_NULL_HANDLE;
-		graphicsPipelineCreateInfo.basePipelineIndex = -1;
-
-		if (vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &graphicsPipelineCreateInfo, nullptr, &circlePipeline) != VK_SUCCESS) {
-			throw std::runtime_error("failed to create graphics pipeline");
-		}
-		vkDestroyShaderModule(device, vertShaderModule, nullptr);
-		vkDestroyShaderModule(device, fragShaderModule, nullptr);
-	}
-
 	void createCircleBuffer() {
 		generateCircle(0.1f, 20, circlePointSet);
 		VkDeviceSize bufferSize = sizeof(circlePointSet[0]) * circlePointSet.size();
@@ -887,48 +576,6 @@ private:
 		copyBuffer(stagingBuffer, circleBuffer, bufferSize);
 		vkDestroyBuffer(device, stagingBuffer, nullptr);
 		vkFreeMemory(device, stagingMemory, nullptr);
-	}
-
-	void updateUniformData(uint32_t currentframe) {
-		static auto startTime = std::chrono::high_resolution_clock::now();
-		auto currentTime = std::chrono::high_resolution_clock::now();
-		float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
-		UniformBufferObject ubo;
-		ubo.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-		ubo.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-		ubo.proj = glm::perspective(glm::radians(45.0f), swapChainExtent.width/(float)swapChainExtent.height, 0.1f, 10.0f);
-		ubo.proj[1][1] *= -1;
-		memcpy(uniformBuffersMapped[currentFrame], &ubo, sizeof(ubo));
-	}
-
-	void createUniformBuffers() {
-		VkDeviceSize bufferSize = sizeof(UniformBufferObject);
-		uniformBuffers.resize(MAX_FRAMES_IN_FLIGHT);
-		uniformMemory.resize(MAX_FRAMES_IN_FLIGHT);
-		uniformBuffersMapped.resize(MAX_FRAMES_IN_FLIGHT);
-
-		for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
-			createBuffer(uniformBuffers[i], uniformMemory[i], bufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-			vkMapMemory(device, uniformMemory[i], 0, bufferSize, 0, &uniformBuffersMapped[i]);
-		}
-	}
-
-	void createDescriptorsetLayout() {
-		VkDescriptorSetLayoutBinding layoutBinding;
-		layoutBinding.binding = 0; // 和vertex shader中的binding对应
-		layoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-		layoutBinding.descriptorCount = 1; // 因为只在一个unifrombuffer中，因此只有一个
-		layoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
-		layoutBinding.pImmutableSamplers = nullptr;
-
-		VkDescriptorSetLayoutCreateInfo setLayoutCreateInfo{};
-		setLayoutCreateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-		setLayoutCreateInfo.bindingCount = 1;
-		setLayoutCreateInfo.pBindings = &layoutBinding;
-
-		if (vkCreateDescriptorSetLayout(device, &setLayoutCreateInfo, nullptr, &descriptorsetlayout) != VK_SUCCESS) {
-			throw std::runtime_error("failed to create descriptorsetlayout");
-		}
 	}
 
 	uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags property) {
@@ -996,40 +643,6 @@ private:
 		vkQueueSubmit(graphicQueue, 1, &submitInfo, VK_NULL_HANDLE);
 		vkQueueWaitIdle(graphicQueue);
 		vkFreeCommandBuffers(device, commandPool, 1, &commandBuffer);
-	}
-
-	void createIndexBuffer() {
-		VkDeviceSize bufferSize = sizeof(indices[0]) * indices.size();
-		VkBuffer stagingBuffer;
-		VkDeviceMemory stagingMemory;
-		createBuffer(stagingBuffer, stagingMemory, bufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-
-		void* data;
-		vkMapMemory(device, stagingMemory, 0, bufferSize, 0, &data);
-		memcpy(data, indices.data(), (size_t)bufferSize);
-		vkUnmapMemory(device, stagingMemory);
-
-		createBuffer(indexBuffer, indexMemory, bufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-		copyBuffer(stagingBuffer, indexBuffer, bufferSize);
-		vkDestroyBuffer(device, stagingBuffer, nullptr);
-		vkFreeMemory(device, stagingMemory, nullptr);
-	}
-
-	void createVertexBuffer() {
-		VkDeviceSize bufferSize = sizeof(vertices[0]) * vertices.size();
-		VkBuffer stagingBuffer;
-		VkDeviceMemory stagingMemory;
-		createBuffer(stagingBuffer, stagingMemory, bufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-
-		void* data;
-		vkMapMemory(device, stagingMemory, 0, bufferSize, 0, &data);
-		memcpy(data, vertices.data(), (size_t)bufferSize);
-		vkUnmapMemory(device, stagingMemory);
-
-		createBuffer(vertexBuffer, vertexMemory, bufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-		copyBuffer(stagingBuffer, vertexBuffer, bufferSize);
-		vkDestroyBuffer(device, stagingBuffer, nullptr);
-		vkFreeMemory(device, stagingMemory, nullptr);
 	}
 
 	void createSyncObjects() {
@@ -1153,13 +766,9 @@ private:
 		scissor.extent = swapChainExtent;
 		vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
-		//VkBuffer vertexBuffers[] = { vertexBuffer };
 		VkBuffer vertexBuffers[] = { circleBuffer };
 		VkDeviceSize offsets[] = { 0 };
 		vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
-		// vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, circlePipelineLayout, 0, 1, &circleDescriptorSets[currentFrame], 0, nullptr);
-		// vkCmdBindIndexBuffer(commandBuffer, indexBuffer, 0, VK_INDEX_TYPE_UINT16);
-		// vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &descriptorSets[currentFrame], 0, nullptr);
 		for (uint32_t j = 0; j < OBJECT_INSTANCES; ++j) {
 			uint32_t dynamicOffset = j * static_cast<uint32_t>(dynamicAlignment);
 			vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, dynamicUniformBufferPipelineLayout, 0, 1, &dynamicUniformBufferDescriptorsets[currentFrame], 1, &dynamicOffset);
@@ -1271,156 +880,6 @@ private:
 
 		file.close();
 		return buffer;
-	}
-
-	void createGraphicsPipeline() {
-		auto vertShaderCode = readFile("vert.spv");
-		auto fragShaderCode = readFile("frag.spv");
-
-		VkShaderModule vertShaderModule = createShaderModule(vertShaderCode);
-		VkShaderModule fragShaderModule = createShaderModule(fragShaderCode);
-
-		VkPipelineShaderStageCreateInfo vertShaderStageInfo{};
-		vertShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-		vertShaderStageInfo.stage = VK_SHADER_STAGE_VERTEX_BIT;
-		vertShaderStageInfo.module = vertShaderModule;
-		vertShaderStageInfo.pName = "main";
-
-		VkPipelineShaderStageCreateInfo fragShaderStageInfo{};
-		fragShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-		fragShaderStageInfo.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
-		fragShaderStageInfo.module = fragShaderModule;
-		fragShaderStageInfo.pName = "main";
-
-		VkPipelineShaderStageCreateInfo shaderStages[] = {vertShaderStageInfo, fragShaderStageInfo};
-
-		// fix function
-		std::vector<VkDynamicState> dynamicStates = {
-			VK_DYNAMIC_STATE_VIEWPORT,
-			VK_DYNAMIC_STATE_SCISSOR
-		};
-		VkPipelineDynamicStateCreateInfo dynamicSateCreateInfo{};
-		dynamicSateCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
-		dynamicSateCreateInfo.dynamicStateCount = static_cast<uint32_t>(dynamicStates.size());
-		dynamicSateCreateInfo.pDynamicStates = dynamicStates.data();
-
-		VkPipelineVertexInputStateCreateInfo vertexInputCreateInfo{};
-		vertexInputCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-		auto bingDingDescription = Vertex::getBingdingDescrition();
-		auto attributeDescription = Vertex::getAttributeDescriptions();
-
-		vertexInputCreateInfo.vertexBindingDescriptionCount = 1;
-		vertexInputCreateInfo.pVertexBindingDescriptions = &bingDingDescription;
-		vertexInputCreateInfo.vertexAttributeDescriptionCount = static_cast<uint32_t>(attributeDescription.size());
-		vertexInputCreateInfo.pVertexAttributeDescriptions = attributeDescription.data();
-
-		VkPipelineInputAssemblyStateCreateInfo inputAssembly{};
-		inputAssembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
-		inputAssembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
-		inputAssembly.primitiveRestartEnable = VK_FALSE;
-
-		VkViewport viewPort{};
-		viewPort.x = 0.0f;
-		viewPort.y = 0.0f;
-		viewPort.width = (float)swapChainExtent.width;
-		viewPort.height = (float)swapChainExtent.height;
-		viewPort.minDepth = 0.0f;
-		viewPort.maxDepth = 1.0f;
-		
-		VkRect2D scissor{};
-		scissor.extent = swapChainExtent;
-		scissor.offset = {0, 0};
-
-		VkPipelineViewportStateCreateInfo viewPortState{};
-		viewPortState.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
-		viewPortState.viewportCount = 1;
-		viewPortState.scissorCount = 1;
-
-		VkPipelineRasterizationStateCreateInfo rasterizer{};
-		rasterizer.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
-		rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
-		//rasterizer.polygonMode = VK_POLYGON_MODE_POINT;
-		rasterizer.depthClampEnable = VK_FALSE;
-		rasterizer.rasterizerDiscardEnable = VK_FALSE;
-		rasterizer.lineWidth = 1.0f;
-
-		rasterizer.cullMode = VK_CULL_MODE_BACK_BIT;
-		rasterizer.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
-
-		rasterizer.depthBiasEnable = VK_FALSE;
-		rasterizer.depthBiasClamp = 0.0f;
-		rasterizer.depthBiasConstantFactor = 0.0f;
-		rasterizer.depthBiasSlopeFactor = 0.0f;
-
-		VkPipelineMultisampleStateCreateInfo multisampling{};
-		multisampling.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
-		multisampling.sampleShadingEnable = VK_FALSE;
-		multisampling.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
-		multisampling.minSampleShading = 1.0f;
-		multisampling.pSampleMask = nullptr;
-		multisampling.alphaToCoverageEnable = VK_FALSE;
-		multisampling.alphaToOneEnable = VK_FALSE;
-
-		VkPipelineColorBlendAttachmentState colorBlendAttachment{};
-		colorBlendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT |
-			VK_COLOR_COMPONENT_G_BIT |
-			VK_COLOR_COMPONENT_B_BIT |
-			VK_COLOR_COMPONENT_A_BIT;
-		colorBlendAttachment.blendEnable = VK_FALSE;
-		colorBlendAttachment.colorBlendOp = VK_BLEND_OP_ADD;
-		colorBlendAttachment.alphaBlendOp = VK_BLEND_OP_ADD;
-		colorBlendAttachment.srcColorBlendFactor = VK_BLEND_FACTOR_ONE;
-		colorBlendAttachment.dstColorBlendFactor = VK_BLEND_FACTOR_ZERO;
-		colorBlendAttachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
-		colorBlendAttachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
-
-		VkPipelineColorBlendStateCreateInfo colorBlend{};
-		colorBlend.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
-		colorBlend.logicOpEnable = VK_FALSE;
-		colorBlend.logicOp = VK_LOGIC_OP_COPY;
-		colorBlend.attachmentCount = 1;
-		colorBlend.pAttachments = &colorBlendAttachment;
-		colorBlend.blendConstants[0] = 0.0f; // rgba
-		colorBlend.blendConstants[1] = 0.0f;
-		colorBlend.blendConstants[2] = 0.0f;
-		colorBlend.blendConstants[3] = 0.0f;
-
-		VkPipelineLayoutCreateInfo layoutCreateInfo{};
-		layoutCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-		layoutCreateInfo.setLayoutCount = 1;
-		layoutCreateInfo.pSetLayouts = &descriptorsetlayout;
-		layoutCreateInfo.pushConstantRangeCount = 0;
-		layoutCreateInfo.pPushConstantRanges = nullptr;
-		if (vkCreatePipelineLayout(device, &layoutCreateInfo, nullptr, &pipelineLayout) != VK_SUCCESS) {
-			throw std::runtime_error("failed to create layout");
-		}
-
-		VkGraphicsPipelineCreateInfo graphicsPipelineCreateInfo{};
-		graphicsPipelineCreateInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
-		graphicsPipelineCreateInfo.stageCount = 2;
-		graphicsPipelineCreateInfo.pStages = shaderStages;
-
-		graphicsPipelineCreateInfo.pDynamicState = &dynamicSateCreateInfo;
-		graphicsPipelineCreateInfo.pVertexInputState = &vertexInputCreateInfo;
-		graphicsPipelineCreateInfo.pInputAssemblyState = &inputAssembly;
-		graphicsPipelineCreateInfo.pViewportState = &viewPortState;
-		graphicsPipelineCreateInfo.pRasterizationState = &rasterizer;
-		graphicsPipelineCreateInfo.pMultisampleState = &multisampling;
-		graphicsPipelineCreateInfo.pDepthStencilState = nullptr;
-		graphicsPipelineCreateInfo.pColorBlendState = &colorBlend;
-		graphicsPipelineCreateInfo.layout = pipelineLayout;
-
-		graphicsPipelineCreateInfo.renderPass = renderPass;
-		graphicsPipelineCreateInfo.subpass = 0;
-
-		graphicsPipelineCreateInfo.basePipelineHandle = VK_NULL_HANDLE;
-		graphicsPipelineCreateInfo.basePipelineIndex = -1;
-
-		if (vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &graphicsPipelineCreateInfo, nullptr, &pipeline) != VK_SUCCESS) {
-			throw std::runtime_error("failed to create graphics pipeline");
-		}
-		vkDestroyShaderModule(device, vertShaderModule, nullptr);
-		vkDestroyShaderModule(device, fragShaderModule, nullptr);
 	}
 
 	void createImageView() {
@@ -1832,21 +1291,6 @@ private:
 			vkDestroySemaphore(device, renderFinishedSemaphores[i], nullptr);
 			vkDestroyFence(device, inFlightFences[i], nullptr);
 		}
-
-		/*for (uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
-			vkDestroyBuffer(device, uniformBuffers[i], nullptr);
-			vkFreeMemory(device, uniformMemory[i], nullptr);
-		}*/
-
-		//vkDestroyDescriptorSetLayout(device, descriptorsetlayout, nullptr);
-		
-		/*for (uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
-			vkDestroyBuffer(device, uniformBuffersCircle[i], nullptr);
-			vkFreeMemory(device, uniformMemoryCircle[i], nullptr);
-		}*/
-		/*vkDestroyDescriptorSetLayout(device, circleDescriptorSetLayout, nullptr);
-		vkDestroyDescriptorPool(device, descriptorPool, nullptr);*/
-		
 		for (uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
 			vkDestroyBuffer(device, dynamicUniformbufffers[i].view, nullptr);
 			vkDestroyBuffer(device, dynamicUniformbufffers[i].dynamic, nullptr);
@@ -1860,17 +1304,8 @@ private:
 		vkDestroyBuffer(device, circleBuffer, nullptr);
 		vkFreeMemory(device, circleMemory, nullptr);
 
-		//vkDestroyBuffer(device, indexBuffer, nullptr);
-		//vkFreeMemory(device, indexMemory, nullptr);
-
-		//vkDestroyBuffer(device, vertexBuffer, nullptr);
-		//vkFreeMemory(device, vertexMemory, nullptr);
 		vkDestroyCommandPool(device, commandPool, nullptr);
 
-		//vkDestroyPipeline(device, pipeline, nullptr);
-		//vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
-		/*vkDestroyPipeline(device, circlePipeline, nullptr);
-		vkDestroyPipelineLayout(device, circlePipelineLayout, nullptr);*/
 		vkDestroyPipeline(device, dynamicUniformBufferPipeline, nullptr);
 		vkDestroyPipelineLayout(device, dynamicUniformBufferPipelineLayout, nullptr);
 		vkDestroyRenderPass(device, renderPass, nullptr);
