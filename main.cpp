@@ -384,9 +384,9 @@ private:
 		setAllocateInfo2.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
 		setAllocateInfo2.descriptorPool = multiSetDescriptorPools;
 		setAllocateInfo2.descriptorSetCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
-		setAllocateInfo2.pSetLayouts = layouts1.data();
+		setAllocateInfo2.pSetLayouts = layouts2.data();
 		multiDescriptorSet2.resize(MAX_FRAMES_IN_FLIGHT);
-		if (vkAllocateDescriptorSets(device, &setAllocateInfo1, multiDescriptorSet2.data()) != VK_SUCCESS) {
+		if (vkAllocateDescriptorSets(device, &setAllocateInfo2, multiDescriptorSet2.data()) != VK_SUCCESS) {
 			throw std::runtime_error("failed to create dynamic uniform buffer descriptor sets");
 		}
 
@@ -790,6 +790,8 @@ private:
 		for (uint32_t j = 0; j < OBJECT_INSTANCES; ++j) {
 			uint32_t dynamicOffset = j * static_cast<uint32_t>(dynamicAlignment);
 			std::vector<VkDescriptorSet> descriptorSets = { multiDescriptorSet1[currentFrame], multiDescriptorSet2[currentFrame] };
+			// vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, multiSetPipelineLayout, 0, 1, &multiDescriptorSet1[currentFrame], 0, nullptr);
+			// vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, multiSetPipelineLayout, 1, 1, &multiDescriptorSet2[currentFrame], 1, &dynamicOffset);
 			vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, multiSetPipelineLayout, 0, 2, descriptorSets.data(), 1, &dynamicOffset);
 			vkCmdDraw(commandBuffer, static_cast<uint32_t>(circlePointSet.size()), 1, 0, 0);
 		}

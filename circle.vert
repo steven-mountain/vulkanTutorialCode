@@ -11,5 +11,4 @@ layout(set = 1, binding = 0) uniform UboInstance{
 
 void main() {
     gl_Position = ubo[0].projection * ubo[0].view * uboInstance[0].model * vec4(inPosition, 0.0, 1.0);
-//    gl_Position = vec4(inPosition, 0.0, 1.0);
 }
