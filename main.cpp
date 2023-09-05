@@ -835,9 +835,12 @@ private:
 		colorAttachmentDescription.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
 		// attachment 就是要渲染出的结果是啥 render target 就是一个缓冲区，用来保存渲染结果的
 		VkAttachmentReference colorAttachmentReference{};
-		colorAttachmentReference.attachment = 0;
+		// 这里的 attachment 指的是坐标，与VkRenderPassCreateInfo::pAttachments相对应
+		// 是当前使用的 attachment 在 RenderPass中 所有 attachments中的索引位置
+		colorAttachmentReference.attachment = 0; 
 		colorAttachmentReference.layout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
 
+		// 这里可以创建多个subpass
 		VkSubpassDescription subPass{};
 		subPass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
 		subPass.colorAttachmentCount = 1;
@@ -850,13 +853,14 @@ private:
 		subpassDependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
 		subpassDependency.srcAccessMask = 0;
 		subpassDependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+		
 
 		VkRenderPassCreateInfo renderpassCreateInfo{};
 		renderpassCreateInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
 		renderpassCreateInfo.attachmentCount = 1;
-		renderpassCreateInfo.subpassCount = 1;
 		renderpassCreateInfo.pAttachments = &colorAttachmentDescription;
-		renderpassCreateInfo.pSubpasses = &subPass;
+		renderpassCreateInfo.subpassCount = 1;
+		renderpassCreateInfo.pSubpasses = &subPass; // 这里指定多个subpass
 		renderpassCreateInfo.dependencyCount = 1;
 		renderpassCreateInfo.pDependencies = &subpassDependency;
 
@@ -1102,7 +1106,6 @@ private:
 		vkGetSwapchainImagesKHR(device, swapchain, &imageCount, swapChainImages.data());
 		swapChainImageFormat = surfaceFormat.format;
 		swapChainExtent = extent;
-
 	}
 	// window surface
 	void createSurface() {
