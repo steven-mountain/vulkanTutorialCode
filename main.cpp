@@ -215,6 +215,7 @@ private:
 	VkDeviceMemory indexMemory;
 
 	// texture
+	uint32_t mipLevels;
 	VkImage textureImage;
 	VkDeviceMemory textureImageMemory;
 	VkImageView textureImageView;
@@ -224,6 +225,13 @@ private:
 	VkImage depthImage;
 	VkDeviceMemory depthMemory;
 	VkImageView depthImageView;
+
+	// msaa
+	VkSampleCountFlagBits msaaSamples = VK_SAMPLE_COUNT_1_BIT; // 这里设置为一就是一个像素只有一个采样点，相当于不使用msaa
+	// multi sample image, 这个是用来保存multi sample的结果的。最终呈现到屏幕，还是得要放进swapchain image里才行
+	VkImage colorImage;
+	VkDeviceMemory colorImageMemory;
+	VkImageView colorImageView;
 
 	VkSemaphore imageAvailableSemaphore;
 	VkSemaphore renderFinishedSemaphore;
@@ -248,6 +256,7 @@ private:
 		createCommandPool();
 		createDescriptorsetLayout(); // descriptor layout
 		createGraphicsPipeline();  // 需要descriptor layout
+		createColorResources();
 		createDepthResources();
 		createFramebuffer();
 		createDescriptorPool(); // pool 不需要layout
@@ -261,6 +270,45 @@ private:
 		createCommandBuffers();
 		createDescriptorsets(); // 创建sets 需要buffer 需要layout 需要pool
 		createSyncObjects();
+	}
+
+	void createColorResources() {
+		VkFormat colorFormat = swapChainImageFormat;
+		createImage(
+			swapChainExtent.width,
+			swapChainExtent.height,
+			1,
+			msaaSamples,
+			colorFormat,
+			VK_IMAGE_TILING_OPTIMAL,
+			VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
+			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+			colorImage,
+			colorImageMemory
+		);
+		colorImageView = createImageView(
+			colorImage,
+			colorFormat,
+			VK_IMAGE_ASPECT_COLOR_BIT,
+			1
+		);
+	}
+
+	// 获取gpu所支持的最大采样数
+	VkSampleCountFlagBits getMaxUseableSampleCount() {
+		VkPhysicalDeviceProperties physicalDeviceProperties;
+		vkGetPhysicalDeviceProperties(physicalDevice, &physicalDeviceProperties);
+		// 获取 颜色 和 深度 图像GPU所支持的最大采样数
+		VkSampleCountFlags counts = physicalDeviceProperties.limits.framebufferColorSampleCounts &
+			physicalDeviceProperties.limits.framebufferDepthSampleCounts;
+		if (counts & VK_SAMPLE_COUNT_64_BIT) { return VK_SAMPLE_COUNT_64_BIT; }
+		if (counts & VK_SAMPLE_COUNT_32_BIT) { return VK_SAMPLE_COUNT_32_BIT; }
+		if (counts & VK_SAMPLE_COUNT_16_BIT) { return VK_SAMPLE_COUNT_16_BIT; }
+		if (counts & VK_SAMPLE_COUNT_8_BIT) { return VK_SAMPLE_COUNT_8_BIT; }
+		if (counts & VK_SAMPLE_COUNT_4_BIT) { return VK_SAMPLE_COUNT_4_BIT; }
+		if (counts & VK_SAMPLE_COUNT_2_BIT) { return VK_SAMPLE_COUNT_2_BIT; }
+
+		return VK_SAMPLE_COUNT_1_BIT;
 	}
 
 	void loadModel() {
@@ -329,9 +377,31 @@ private:
 
 	void createDepthResources() {
 		VkFormat depthFormat = findDepthFormat();
-		createImage(swapChainExtent.width, swapChainExtent.height, depthFormat, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, depthImage, depthMemory);
-		depthImageView = createImageView(depthImage, depthFormat, VK_IMAGE_ASPECT_DEPTH_BIT);
-		transitionImageLayout(depthImage, depthFormat, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
+		createImage(
+			swapChainExtent.width, 
+			swapChainExtent.height, 
+			1, 
+			msaaSamples, 
+			depthFormat, 
+			VK_IMAGE_TILING_OPTIMAL, 
+			VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, 
+			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 
+			depthImage, 
+			depthMemory
+		);
+		depthImageView = createImageView(
+			depthImage, 
+			depthFormat, 
+			VK_IMAGE_ASPECT_DEPTH_BIT, 
+			1
+		);
+		transitionImageLayout(
+			depthImage, 
+			depthFormat, 
+			VK_IMAGE_LAYOUT_UNDEFINED, 
+			VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, 
+			1
+		);
 	}
 
 	void createTextureImageSampler() {
@@ -352,9 +422,9 @@ private:
 		samplerCreateInfo.compareOp = VK_COMPARE_OP_ALWAYS;
 
 		samplerCreateInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+		samplerCreateInfo.minLod = static_cast<float>(mipLevels / 8);
+		samplerCreateInfo.maxLod = static_cast<float>(mipLevels);
 		samplerCreateInfo.mipLodBias = 0.0f;
-		samplerCreateInfo.minLod = 0.0f;
-		samplerCreateInfo.maxLod = 0.0f;
 
 		if (vkCreateSampler(device, &samplerCreateInfo, nullptr, &textureImageSampler)) {
 			throw std::runtime_error("failed to create image sampler");
@@ -362,10 +432,15 @@ private:
 	}
 
 	void createTextureImageView() {
-		textureImageView = createImageView(textureImage, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT);
+		textureImageView = createImageView(textureImage, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT, mipLevels);
 	}
 
-	VkImageView createImageView(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags) {
+	VkImageView createImageView(
+		VkImage image,
+		VkFormat format,
+		VkImageAspectFlags aspectFlags,
+		uint32_t mipLevels
+	) {
 		VkImageViewCreateInfo imageViewCreateInfo{};
 
 		imageViewCreateInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
@@ -377,7 +452,8 @@ private:
 		imageViewCreateInfo.subresourceRange.baseArrayLayer = 0;
 		imageViewCreateInfo.subresourceRange.layerCount = 1;
 		imageViewCreateInfo.subresourceRange.baseMipLevel = 0;
-		imageViewCreateInfo.subresourceRange.levelCount = 1;
+		// 表示的是图像视图中的子资源级别数量。指定了视图可以访问的mipmap级别数
+		imageViewCreateInfo.subresourceRange.levelCount = mipLevels; 
 
 		VkImageView imageView;
 		if (vkCreateImageView(device, &imageViewCreateInfo, nullptr, &imageView)) {
@@ -386,22 +462,129 @@ private:
 		return imageView;
 	}
 
+	void generateMipmaps(
+		VkImage image,
+		VkFormat imageFormat,
+		int32_t texWidth,
+		int32_t texHeight,
+		uint32_t mipLevels
+	) {
+
+		// Check if image format supports linear blitting
+		VkFormatProperties formatProperties;
+		vkGetPhysicalDeviceFormatProperties(physicalDevice, imageFormat, &formatProperties);
+		if (!(formatProperties.optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT)) {
+			throw std::runtime_error("texture image format does not support linear blitting!");
+		}
+
+		VkCommandBuffer commandBuffer = beginSingleTimeCommands();
+		VkImageMemoryBarrier imageBarrier{};
+
+		imageBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+		imageBarrier.image = image;
+		imageBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		imageBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		imageBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		imageBarrier.subresourceRange.baseArrayLayer = 0;
+		imageBarrier.subresourceRange.layerCount = 1;
+		imageBarrier.subresourceRange.levelCount = 1;
+
+		int32_t mipWidth = texWidth;
+		int32_t mipHeight = texHeight;
+		for (uint32_t i = 1; i < mipLevels; ++i) {
+			imageBarrier.subresourceRange.baseMipLevel = i - 1;
+			imageBarrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+			imageBarrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+			imageBarrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+			imageBarrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+			vkCmdPipelineBarrier(
+				commandBuffer,
+				VK_PIPELINE_STAGE_TRANSFER_BIT,
+				VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
+				0, nullptr,
+				0, nullptr,
+				1, &imageBarrier
+			);
+
+			VkImageBlit blit{};
+			blit.srcOffsets[0] = { 0, 0, 0 };
+			blit.srcOffsets[1] = { mipWidth, mipHeight, 1 };
+			blit.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+			blit.srcSubresource.mipLevel = i - 1;
+			blit.srcSubresource.baseArrayLayer = 0;
+			blit.srcSubresource.layerCount = 1;
+			blit.dstOffsets[0] = { 0, 0, 0 };
+			blit.dstOffsets[1] = { mipWidth > 1 ? mipWidth / 2 : 1, mipHeight > 1 ? mipHeight / 2 : 1, 1 };
+			blit.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+			blit.dstSubresource.mipLevel = i;
+			blit.dstSubresource.baseArrayLayer = 0;
+			blit.dstSubresource.layerCount = 1;
+
+			vkCmdBlitImage(commandBuffer,
+				image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+				image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+				1, &blit,
+				VK_FILTER_LINEAR);
+
+			imageBarrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+			imageBarrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+			imageBarrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+			imageBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+
+			vkCmdPipelineBarrier(commandBuffer,
+				VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0,
+				0, nullptr,
+				0, nullptr,
+				1, &imageBarrier);
+			if (mipWidth > 1) mipWidth /= 2;
+			if (mipHeight > 1) mipHeight /= 2;
+		}
+		
+		imageBarrier.subresourceRange.baseMipLevel = mipLevels - 1;
+		imageBarrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+		imageBarrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+		imageBarrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+		imageBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+
+		vkCmdPipelineBarrier(commandBuffer,
+			VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0,
+			0, nullptr,
+			0, nullptr,
+			1, &imageBarrier);
+
+		endSingleTimeCommands(commandBuffer);
+	}
+
 	void createTextureImage() {
 		// 主要功能是加载iamge，并将起upload到image object中去
-		int texWitdh, texHeight, texChannels;
+		int texWidth, texHeight, texChannels;
 		// 这里加入了 alpha 通道好处是可以和未来的其他材质保持一致
 		// 加载的像素是一行一行排列的
-		// stbi_uc* pixels = stbi_load("textures/texture.jpg", &texWitdh, &texHeight, &texChannels, STBI_rgb_alpha);
-		stbi_uc* pixels = stbi_load(TEXTURE_PATH.c_str(), &texWitdh, &texHeight, &texChannels, STBI_rgb_alpha);
-		VkDeviceSize imageSize = texWitdh * texHeight * 4;
+		// stbi_uc* pixels = stbi_load("textures/texture.jpg", &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
+		stbi_uc* pixels = stbi_load(TEXTURE_PATH.c_str(), &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
+		VkDeviceSize imageSize = texWidth * texHeight * 4;
 		if (!pixels) {
 			throw std::runtime_error("failed to load texture image!");
 		}
 
+		// 计算出mipmap的层数，也就是log2 最大的边长，再加一
+		mipLevels = static_cast<uint32_t>(
+			std::floor(
+				std::log2(
+					std::max(texWidth, texHeight))
+				)
+			) + 1;
+
 		// 将数据加载到stagingBuffer的stagingMemory中
 		VkBuffer stagingBuffer;
 		VkDeviceMemory stagingBufferMemory;
-		createBuffer(stagingBuffer, stagingBufferMemory, imageSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+		createBuffer(
+			stagingBuffer, 
+			stagingBufferMemory, 
+			imageSize, 
+			VK_BUFFER_USAGE_TRANSFER_SRC_BIT, 
+			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
+		);
 		void* data;
 		vkMapMemory(device, stagingBufferMemory, 0, imageSize, 0, &data);
 		memcpy(data, pixels, static_cast<size_t>(imageSize));
@@ -410,10 +593,35 @@ private:
 		stbi_image_free(pixels);
 
 		// 创建image object
-		createImage(texWitdh, texHeight, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, textureImage, textureImageMemory);
-		transitionImageLayout(textureImage, VK_FORMAT_R8G8B8_SRGB, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
-		copyBufferToImage(stagingBuffer, textureImage, static_cast<uint32_t>(texWitdh), static_cast<uint32_t>(texHeight));
-		transitionImageLayout(textureImage, VK_FORMAT_R8G8B8_SRGB, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+		createImage(
+			texWidth,
+			texHeight, 
+			mipLevels, 
+			VK_SAMPLE_COUNT_1_BIT,
+			VK_FORMAT_R8G8B8A8_SRGB, 
+			VK_IMAGE_TILING_OPTIMAL, 
+			VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, 
+			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 
+			textureImage, 
+			textureImageMemory
+		);
+
+		transitionImageLayout(
+			textureImage, 
+			VK_FORMAT_R8G8B8_SRGB, 
+			VK_IMAGE_LAYOUT_UNDEFINED, 
+			VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 
+			mipLevels
+		);
+
+		copyBufferToImage(
+			stagingBuffer, 
+			textureImage, 
+			static_cast<uint32_t>(texWidth),
+			static_cast<uint32_t>(texHeight)
+		);
+		generateMipmaps(textureImage, VK_FORMAT_R8G8B8A8_SRGB, texWidth, texHeight, mipLevels);
+		// transitionImageLayout(textureImage, VK_FORMAT_R8G8B8_SRGB, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 		
 		vkDestroyBuffer(device, stagingBuffer, nullptr);
 		vkFreeMemory(device, stagingBufferMemory, nullptr);
@@ -584,20 +792,31 @@ private:
 		throw std::runtime_error("failed to find suitable memory");
 	}
 
-	void createImage(uint32_t width, uint32_t height, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, VkImage &image, VkDeviceMemory &imageMemory) {
+	void createImage(
+		uint32_t width,
+		uint32_t height,
+		uint32_t mipLevels,
+		VkSampleCountFlagBits numSamples,
+		VkFormat format, 
+		VkImageTiling tiling, 
+		VkImageUsageFlags usage, 
+		VkMemoryPropertyFlags properties, 
+		VkImage &image, 
+		VkDeviceMemory &imageMemory
+	) {
 		VkImageCreateInfo imageInfo{};
 		imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
 		imageInfo.imageType = VK_IMAGE_TYPE_2D;
 		imageInfo.extent.width = width;
 		imageInfo.extent.height = height;
 		imageInfo.extent.depth = 1;
-		imageInfo.mipLevels = 1;
+		imageInfo.mipLevels = mipLevels;
 		imageInfo.arrayLayers = 1;
 		imageInfo.format = format;
 		imageInfo.tiling = tiling;
 		imageInfo.usage = usage;
 		imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-		imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+		imageInfo.samples = numSamples;
 		imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
 		if (vkCreateImage(device, &imageInfo, nullptr, &image)!=VK_SUCCESS) {
@@ -638,7 +857,13 @@ private:
 		endSingleTimeCommands(commandBuffer);
 	}
 
-	void transitionImageLayout(VkImage image, VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout) {
+	void transitionImageLayout(
+		VkImage image, 
+		VkFormat format, 
+		VkImageLayout oldLayout, 
+		VkImageLayout newLayout,
+		uint32_t mipLevels
+	) {
 		VkCommandBuffer commandBuffer = beginSingleTimeCommands();
 
 		VkPipelineStageFlags srcStageMask;
@@ -655,7 +880,7 @@ private:
 		imageBarrier.subresourceRange.baseArrayLayer = 0;
 		imageBarrier.subresourceRange.layerCount = 1;
 		imageBarrier.subresourceRange.baseMipLevel = 0;
-		imageBarrier.subresourceRange.levelCount = 1;
+		imageBarrier.subresourceRange.levelCount = mipLevels;
 		
 		imageBarrier.srcAccessMask = 0;
 		imageBarrier.dstAccessMask = 0;
@@ -907,9 +1132,10 @@ private:
 	void createFramebuffer() {
 		swapchainFramebuffer.resize(swapChainImageView.size());
 		for (int i = 0; i < swapchainFramebuffer.size(); ++i) {
-			std::array<VkImageView, 2> attachments = {
-				swapChainImageView[i],
-				depthImageView
+			std::array<VkImageView, 3> attachments = {
+				colorImageView,
+				depthImageView,
+				swapChainImageView[i]
 			};
 
 			VkFramebufferCreateInfo frambufferCreateInfo{};
@@ -927,13 +1153,15 @@ private:
 	}
 
 	void createRenderPass() {
+		// 管线输出结果，与新创建的支持多采样的 color image 相对应
 		VkAttachmentDescription colorAttachmentDescription{};
 		colorAttachmentDescription.format = swapChainImageFormat;
-		colorAttachmentDescription.samples = VK_SAMPLE_COUNT_1_BIT;
+		colorAttachmentDescription.samples = msaaSamples;
 		colorAttachmentDescription.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
 		colorAttachmentDescription.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
 		colorAttachmentDescription.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_CLEAR; // do nothing in stencil buffer
 		colorAttachmentDescription.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+		colorAttachmentDescription.finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 		// attachment 就是要渲染出的结果是啥 render target 就是一个缓冲区，用来保存渲染结果的
 		VkAttachmentReference colorAttachmentReference{};
 		// 这里的 attachment 指的是坐标，与VkRenderPassCreateInfo::pAttachments相对应
@@ -944,7 +1172,7 @@ private:
 		// depth attachment
 		VkAttachmentDescription depthAttachmentDescription{};
 		depthAttachmentDescription.format = findDepthFormat();
-		depthAttachmentDescription.samples = VK_SAMPLE_COUNT_1_BIT;
+		depthAttachmentDescription.samples = msaaSamples;
 		depthAttachmentDescription.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
 		depthAttachmentDescription.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
 		depthAttachmentDescription.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
@@ -957,13 +1185,29 @@ private:
 		depthAttachmentReference.attachment = 1;
 		depthAttachmentReference.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 
+		// color resovle 被解析到的 与 swapchain image view 对应
+		VkAttachmentDescription colorResolveAttachmentDescription{};
+		colorResolveAttachmentDescription.format = swapChainImageFormat;
+		colorResolveAttachmentDescription.samples = VK_SAMPLE_COUNT_1_BIT;
+		colorResolveAttachmentDescription.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+		colorResolveAttachmentDescription.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+		colorResolveAttachmentDescription.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+		colorResolveAttachmentDescription.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+		colorResolveAttachmentDescription.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+		colorResolveAttachmentDescription.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+		// color resovle reference
+		VkAttachmentReference colorResolveAttachmentReference{};
+		colorResolveAttachmentReference.attachment = 2;
+		colorResolveAttachmentReference.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
 
 		// 这里可以创建多个subpass
 		VkSubpassDescription subPass{};
 		subPass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
 		subPass.colorAttachmentCount = 1;
-		subPass.pColorAttachments = &colorAttachmentReference;
+		subPass.pColorAttachments = &colorAttachmentReference; //  这里现在输入到的是新创建的那个支持多采样的图像中的
 		subPass.pDepthStencilAttachment = &depthAttachmentReference;
+		subPass.pResolveAttachments = &colorResolveAttachmentReference; //  现在这才是最终swapchain image所对应的 attachment
 
 		VkSubpassDependency subpassDependency{};
 		subpassDependency.srcSubpass = VK_SUBPASS_EXTERNAL;
@@ -973,7 +1217,11 @@ private:
 		subpassDependency.srcAccessMask = 0;
 		subpassDependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
 		
-		std::array<VkAttachmentDescription, 2> attachments = {colorAttachmentDescription, depthAttachmentDescription};
+		std::array<VkAttachmentDescription, 3> attachments = {
+			colorAttachmentDescription, 
+			depthAttachmentDescription,
+			colorResolveAttachmentDescription
+		};
 		VkRenderPassCreateInfo renderpassCreateInfo{};
 		renderpassCreateInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
 		renderpassCreateInfo.attachmentCount = static_cast<uint32_t>(attachments.size());
@@ -986,7 +1234,6 @@ private:
 		if (vkCreateRenderPass(device, &renderpassCreateInfo, nullptr, &renderPass) != VK_SUCCESS) {
 			throw std::runtime_error("failed to create renderpass");
 		}
-
 	}
 
 	VkShaderModule createShaderModule(const std::vector<char>& code) {
@@ -1100,7 +1347,7 @@ private:
 		VkPipelineMultisampleStateCreateInfo multisampling{};
 		multisampling.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
 		multisampling.sampleShadingEnable = VK_FALSE;
-		multisampling.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+		multisampling.rasterizationSamples = msaaSamples;
 		multisampling.minSampleShading = 1.0f;
 		multisampling.pSampleMask = nullptr;
 		multisampling.alphaToCoverageEnable = VK_FALSE;
@@ -1184,7 +1431,7 @@ private:
 	void createImageViews() {
 		swapChainImageView.resize(swapChainImages.size());
 		for (int i = 0; i < swapChainImages.size(); ++i) {
-			swapChainImageView[i] = createImageView(swapChainImages[i], swapChainImageFormat, VK_IMAGE_ASPECT_COLOR_BIT);
+			swapChainImageView[i] = createImageView(swapChainImages[i], swapChainImageFormat, VK_IMAGE_ASPECT_COLOR_BIT, 1);
 		}
 	}
 
@@ -1259,6 +1506,8 @@ private:
 		for (const auto& device : devices) {
 			if (isDeviceSuitable(device)) {
 				physicalDevice = device;
+				msaaSamples = getMaxUseableSampleCount();
+				break;
 			}
 		}
 	}
@@ -1588,6 +1837,10 @@ private:
 		vkDestroyCommandPool(device, commandPool, nullptr);
 		vkDestroyPipeline(device, pipeline, nullptr);
 		vkDestroyRenderPass(device, renderPass, nullptr);
+
+		vkDestroyImageView(device, colorImageView, nullptr);
+		vkDestroyImage(device, colorImage, nullptr);
+		vkFreeMemory(device, colorImageMemory, nullptr);
 
 		vkDestroyImageView(device, depthImageView, nullptr);
 		vkDestroyImage(device, depthImage, nullptr);
