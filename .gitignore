@@ -1,6 +1,0 @@
-x64
-*.spv
-*.bat
-VulkanTest.vcxproj
-VulkanTest.vcxproj.filters
-VulkanTest.vcxproj.user
